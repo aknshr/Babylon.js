@@ -1,9 +1,10 @@
 import type { ComponentType, PropsWithChildren } from "react";
 
 import type { AccordionSectionProps } from "shared-ui-components/fluent/primitives/accordion";
+import { AccordionPinnedContext } from "shared-ui-components/fluent/primitives/accordion";
 
 import { makeStyles } from "@fluentui/react-components";
-import { Children, isValidElement, useMemo } from "react";
+import { ReactElement, Children, isValidElement, useMemo, useState, useEffect } from "react";
 
 import { Accordion, AccordionSection } from "shared-ui-components/fluent/primitives/accordion";
 import { CompactModeContextProvider } from "../components/compactModeContextProvider";
@@ -74,6 +75,11 @@ export function ExtensibleAccordion<ContextT = unknown>(
     const classes = useStyles();
 
     const { children, sections, sectionContent, context } = props;
+
+    const [pinnedSectionLines, setPinnedSectionLines] = useState({
+        pinned: new Set<String>(),
+        elements: new Map<String, null | ReactElement>()
+    });
 
     const defaultSections = useMemo(() => {
         const defaultSections: DynamicAccordionSection[] = [];
@@ -170,21 +176,45 @@ export function ExtensibleAccordion<ContextT = unknown>(
                 };
             })
             .filter((section) => section !== null);
-    }, [mergedSections, mergedSectionContent, context]);
+    }, [mergedSections, mergedSectionContent, pinnedSectionLines, context]);
+
+    useEffect(() => {
+        const elements = pinnedSectionLines.elements;
+
+        const interval = setInterval(() => {
+            if (elements.size > 0) {
+                setPinnedSectionLines({ ...pinnedSectionLines });
+            }
+        }, 50);
+
+        for (const key of elements.keys()) {
+            elements.set(key, null);
+        }
+
+        return () => clearInterval(interval);
+    }, [context]);
 
     return (
         <div className={classes.rootDiv}>
             {visibleSections.length > -1 && (
                 <CompactModeContextProvider>
-                    <Accordion>
-                        {...visibleSections.map((section) => {
-                            return (
-                                <AccordionSection key={section.identity} title={section.identity} collapseByDefault={section.collapseByDefault}>
-                                    {section.components}
+                    <AccordionPinnedContext.Provider value={{ pinnedSectionLines, setPinnedSectionLines }}>
+                        <Accordion>
+                            {pinnedSectionLines.elements.size > 0 && (
+                                <AccordionSection key="Pinned" title={"Pinned"} collapseByDefault={false}>
+                                    {[...pinnedSectionLines.elements.values()]}
                                 </AccordionSection>
-                            );
-                        })}
-                    </Accordion>
+                            )}
+
+                            {...visibleSections.map((section) => {
+                                return (
+                                    <AccordionSection key={section.identity} title={section.identity} collapseByDefault={section.collapseByDefault}>
+                                        {section.components}
+                                    </AccordionSection>
+                                );
+                            })}
+                        </Accordion>
+                    </AccordionPinnedContext.Provider>
                 </CompactModeContextProvider>
             )}
         </div>

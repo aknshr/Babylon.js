@@ -8,7 +8,7 @@ import {
     Copy20Regular,
 } from "@fluentui/react-icons";
 import type { FunctionComponent, HTMLProps, PropsWithChildren } from "react";
-import { useContext, useState, forwardRef, cloneElement, isValidElement, useRef } from "react";
+import { useContext, useState, forwardRef, cloneElement, isValidElement, useRef, createContext } from "react";
 import { Collapse } from "../../primitives/collapse";
 import { copyCommandToClipboard } from "../../../copyCommandToClipboard";
 import { ToolContext } from "../fluentToolWrapper";
@@ -17,6 +17,7 @@ import { Link } from "../../primitives/link";
 import { ToggleButton } from "../../primitives/toggleButton";
 import { Button } from "../../primitives/button";
 import { CustomTokens } from "../../primitives/utils";
+import { AccordionPinnedContext } from "../../primitives/accordion";
 
 const usePropertyLineStyles = makeStyles({
     baseLine: {
@@ -55,6 +56,12 @@ const usePropertyLineStyles = makeStyles({
     },
     expandedContentDiv: {
         overflow: "hidden",
+    },
+    pinnableProperty: {
+        cursor: "pointer",
+    },
+    unpinnableProperty: {
+        cursor: "not-allowed",
     },
 });
 
@@ -121,6 +128,8 @@ export type PropertyLineProps<ValueT> = BasePropertyLineProps &
     (NullableProperty<ValueT> | NonNullableProperty | IgnoreNullable<ValueT>) &
     (ExpandableProperty | NonExpandableProperty);
 
+const PropertyLineChildrenContext = createContext(false);
+
 /**
  * A reusable component that renders a property line with a label and child content, and an optional description, copy button, and expandable section.
  *
@@ -137,6 +146,9 @@ export const PropertyLine = forwardRef<HTMLDivElement, PropsWithChildren<Propert
     const [expanded, setExpanded] = useState("expandByDefault" in props ? props.expandByDefault : false);
     const cachedVal = useRef(nullable ? props.value : null);
 
+    const { pinnedSectionLines } = useContext(AccordionPinnedContext);
+    const isPinnable = !useContext(PropertyLineChildrenContext) && pinnedSectionLines;
+
     const description = props.docLink ? <Link url={props.docLink} value={props.description ?? "Docs"} /> : props.description;
 
     // Process children to handle nullable state -- creating component in disabled state with default value in lieu of null value
@@ -150,66 +162,88 @@ export const PropertyLine = forwardRef<HTMLDivElement, PropsWithChildren<Propert
               })
             : children;
 
-    return (
-        <LineContainer ref={ref}>
-            <div className={classes.baseLine}>
-                <InfoLabel
-                    size={size}
-                    className={classes.infoLabel}
-                    label={{ className: classes.labelSlot }}
-                    info={description ? <div className={classes.infoPopup}>{description}</div> : undefined}
-                    title={label}
-                >
-                    <Body1Strong className={classes.labelText}>{label}</Body1Strong>
-                </InfoLabel>
-                <div className={classes.rightContent}>
-                    {expandedContent && (
-                        <ToggleButton
-                            title="Expand/Collapse property"
-                            appearance="transparent"
-                            checkedIcon={size === "small" ? ChevronCircleDown16Regular : ChevronCircleDown20Regular}
-                            uncheckedIcon={size === "small" ? ChevronCircleRight16Regular : ChevronCircleRight20Regular}
-                            value={expanded === true}
-                            onChange={setExpanded}
-                        />
-                    )}
+    const lineContainerElement = (
+        <PropertyLineChildrenContext.Provider key={label} value={true}>
+            <LineContainer ref={ref}>
+                <div className={classes.baseLine}>
+                    <InfoLabel
+                        size={size}
+                        className={mergeClasses(classes.infoLabel, (isPinnable ? classes.pinnableProperty : classes.unpinnableProperty))}
+                        label={{ className: classes.labelSlot }}
+                        info={description ? <div className={classes.infoPopup}>{description}</div> : undefined}
+                        title={label}
+                        onClick={!isPinnable ? undefined : () => {
+                            const pinned = pinnedSectionLines.pinned;
+                            const elements = pinnedSectionLines.elements;
 
-                    {nullable && !ignoreNullable && (
-                        // If this is a nullableProperty and ignoreNullable was not sent, display a checkbox used to toggle null ('checked' means 'non null')
-                        <Checkbox
-                            checked={!(props.value == null)}
-                            onChange={(_, data) => {
-                                if (data.checked) {
-                                    // if checked this means we are returning to non-null, use cached value if exists. If no cached value, use default value
-                                    cachedVal.current != null ? props.onChange(cachedVal.current) : props.onChange(props.defaultValue);
-                                } else {
-                                    // if moving to un-checked state, this means moving to null value. Cache the old value and tell props.onChange(null)
-                                    cachedVal.current = props.value;
-                                    props.onChange(null);
-                                }
-                            }}
-                            title="Toggle null state"
-                        />
-                    )}
-                    {processedChildren}
-                    {onCopy && !disableCopy && (
-                        <Button
-                            className={classes.copy}
-                            title="Copy to clipboard"
-                            appearance="transparent"
-                            icon={size === "small" ? Copy16Regular : Copy20Regular}
-                            onClick={() => copyCommandToClipboard(onCopy())}
-                        />
-                    )}
+                            if (pinned.has(label)) {
+                                pinned.delete(label);
+                                elements.delete(label);
+                            } else {
+                                pinned.add(label);
+                                elements.set(label, lineContainerElement);
+                            }
+                        }}
+                    >
+                        <Body1Strong className={classes.labelText}>{label}</Body1Strong>
+                    </InfoLabel>
+                    <div className={classes.rightContent}>
+                        {expandedContent && (
+                            <ToggleButton
+                                title="Expand/Collapse property"
+                                appearance="transparent"
+                                checkedIcon={size === "small" ? ChevronCircleDown16Regular : ChevronCircleDown20Regular}
+                                uncheckedIcon={size === "small" ? ChevronCircleRight16Regular : ChevronCircleRight20Regular}
+                                value={expanded === true}
+                                onChange={setExpanded}
+                            />
+                        )}
+
+                        {nullable && !ignoreNullable && (
+                            // If this is a nullableProperty and ignoreNullable was not sent, display a checkbox used to toggle null ('checked' means 'non null')
+                            <Checkbox
+                                checked={!(props.value == null)}
+                                onChange={(_, data) => {
+                                    if (data.checked) {
+                                        // if checked this means we are returning to non-null, use cached value if exists. If no cached value, use default value
+                                        cachedVal.current != null ? props.onChange(cachedVal.current) : props.onChange(props.defaultValue);
+                                    } else {
+                                        // if moving to un-checked state, this means moving to null value. Cache the old value and tell props.onChange(null)
+                                        cachedVal.current = props.value;
+                                        props.onChange(null);
+                                    }
+                                }}
+                                title="Toggle null state"
+                            />
+                        )}
+                        {processedChildren}
+                        {onCopy && !disableCopy && (
+                            <Button
+                                className={classes.copy}
+                                title="Copy to clipboard"
+                                appearance="transparent"
+                                icon={size === "small" ? Copy16Regular : Copy20Regular}
+                                onClick={() => copyCommandToClipboard(onCopy())}
+                            />
+                        )}
+                    </div>
                 </div>
-            </div>
-            {expandedContent && (
-                <Collapse visible={!!expanded}>
-                    <div className={classes.expandedContentDiv}>{expandedContent}</div>
-                </Collapse>
-            )}
-        </LineContainer>
+                {expandedContent && (
+                    <Collapse visible={!!expanded}>
+                        <div className={classes.expandedContentDiv}>{expandedContent}</div>
+                    </Collapse>
+                )}
+            </LineContainer>
+        </PropertyLineChildrenContext.Provider>
     );
+
+    if (pinnedSectionLines?.pinned.has(label)) {
+        pinnedSectionLines.elements.set(label, lineContainerElement);
+
+        return null;
+    } else {
+        return lineContainerElement;
+    }
 });
 
 const useLineStyles = makeStyles({

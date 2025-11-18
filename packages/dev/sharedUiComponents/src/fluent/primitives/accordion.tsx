@@ -1,7 +1,7 @@
 import type { AccordionToggleData, AccordionToggleEvent } from "@fluentui/react-components";
-import type { FunctionComponent, PropsWithChildren } from "react";
+import type { FunctionComponent, PropsWithChildren, ReactElement } from "react";
 
-import { Children, isValidElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Children, isValidElement, useCallback, useContext, useEffect, useMemo, useState, createContext } from "react";
 
 import { AccordionHeader, AccordionItem, AccordionPanel, Divider, Accordion as FluentAccordion, Subtitle2Stronger, makeStyles, tokens } from "@fluentui/react-components";
 import { CustomTokens } from "./utils";
@@ -28,6 +28,11 @@ const useStyles = makeStyles({
         flexDirection: "column",
         overflow: "hidden",
     },
+});
+
+export const AccordionPinnedContext = createContext({
+    pinnedSectionLines: undefined as undefined | { pinned: Set<String>, elements: Map<String, null | ReactElement> },
+    setPinnedSectionLines: undefined as undefined | Function
 });
 
 export type AccordionSectionProps = {
